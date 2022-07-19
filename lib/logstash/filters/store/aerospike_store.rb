@@ -9,20 +9,21 @@ class AerospikeStore
 
   attr_accessor :aerospike
 
-  def initialize(aerospike, namespace = "malware")
+  def initialize(aerospike, namespace = "malware", reputation_servers)
     @aerospike = aerospike
     @namespace = namespace 
+    @reputation_servers = reputation_servers
   end
 
   def test(message)
-    key = Key.new(@namespace, 'test_set', 'test_key')
+    key = Key.new(@namespace, 'test_set', 'test_key') rescue nil
     value = '{ "pepito" : 666 }'
     @aerospike.put(key, value)
   end
 
   def update_hash_times(timestamp, data, type)
     unless data.nil?
-      hash_times_key = Key.new(@namespace, type + "Times" , data)
+      hash_times_key = Key.new(@namespace, type + "Times" , data) rescue nil
       data_times = {}
       data_times[type] = data
 
@@ -33,32 +34,32 @@ class AerospikeStore
         data_times["time_end"] = timestamp
       end
 
-      @aerospike.put(has_times_key, data_times)
+      @aerospike.put(hash_times_key, data_times)
     end
   end
 
-  def enrich_ip_score(message) 
+  def enrich_ip_scores(message) 
     data = {}
     data.merge!message
 
     src = message["src"]
     dst = message["dst"]
 
-    src_key = Key.new(@namespace, "ipScores", src)
-    dst_key = Key.new(@namespace, "ipScores", dst)
+    src_key = Key.new(@namespace, "ipScores", src) rescue nil
+    dst_key = Key.new(@namespace, "ipScores", dst) rescue nil
 
     if (!src.nil? and !dst.nil?)
       
-      data_src = @aerospike.get(src_key)
-      data_dst = @aerospike.get(dst_key)
+      data_src = @aerospike.get(src_key) || {}
+      data_dst = @aerospike.get(dst_key) || {}
 
       score_src, score_dst = -1
 
       if !data_src.empty?
         score_src = data_src[SCORE]
-        data_src.delete!(SCORE)
+        data_src.delete(SCORE)
         list_type_src = data_src[LIST_TYPE]
-        data_src.delete!(LIST_TYPE)
+        data_src.delete(LIST_TYPE)
 
         unless list_type_src.nil?
           if list_type_src == "black"
@@ -83,9 +84,9 @@ class AerospikeStore
 
       if !data_dst.empty?
         score_dst = data_dst[SCORE]
-        data_dst.delete!(SCORE)
+        data_dst.delete(SCORE)
         list_type_dst = data_dst[LIST_TYPE]
-        data_dst.delete!(LIST_TYPE)
+        data_dst.delete(LIST_TYPE)
 
         unless list_type_dst.nil?
           if list_type_dst == "black"
@@ -130,11 +131,11 @@ class AerospikeStore
       end
 
     elsif !src.nil?
-      data_src = @aerospike.get(src_key)
+      data_src = @aerospike.get(src_key) || {}
 
       unless data_src.empty?
         score_src = data_src[SCORE]
-        data_src.delete!(SCORE)
+        data_src.delete(SCORE)
         list_type_src = data_src[LIST_TYPE]
         #TODO: we dont need to delete list_type_src??
         
@@ -180,11 +181,11 @@ class AerospikeStore
       HTTP.post(make_random_reputation_url, params)
 
     elsif !dst.nil?
-      data_dst = @aerospike.get(dst_key)
+      data_dst = @aerospike.get(dst_key) || {}
       score_dst = data_dst[SCORE]
-      data_dst.delete!(SCORE)
+      data_dst.delete(SCORE)
       list_type_src = data_dst[LIST_TYPE]
-      data_dst.delete!(LIST_TYPE)
+      data_dst.delete(LIST_TYPE)
 
       unless data_dst.empty?
         unless list_type_src.nil?
@@ -233,15 +234,15 @@ class AerospikeStore
     hash = message["hash"]
 
     unless hash.nil?
-      hash_key = Key.new(@namespace,"hashScores", hash)
+      hash_key = Key.new(@namespace,"hashScores", hash) rescue nil
 
-      data_hash = @aerospike.get(hash_key)
+      data_hash = @aerospike.get(hash_key) || {}
 
       unless data_hash.empty?
         list_type = data_hash[LIST_TYPE]
-        data_hash.delete!(LIST_TYPE)
+        data_hash.delete(LIST_TYPE)
         score = data_hash[SCORE]
-        data_hash.delete!(SCORE)
+        data_hash.delete(SCORE)
 
         unless list_type.nil?
           if list_type == "black"
@@ -281,13 +282,13 @@ class AerospikeStore
     url = message["url"]
 
     unless url.nil?
-      url_key = Key.new(@namespace, "urlScores", url)
+      url_key = Key.new(@namespace, "urlScores", url) rescue nil
 
-      url_hash = @aerospike.get(url_key)
+      url_hash = @aerospike.get(url_key) || {}
 
       unless url_hash.empty?
         list_type = url_hash[LIST_TYPE]
-        url_hash.delete!(LIST_TYPE)
+        url_hash.delete(LIST_TYPE)
         score = url_hash[SCORE]
 
         unless list_type.nil?

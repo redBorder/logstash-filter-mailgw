@@ -26,7 +26,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     # Add instance variables
     @aerospike_server = AerospikeConfig::servers if @aerospike_server.empty?
     @aerospike = Client.new(@aerospike_server)
-    @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace)
+    @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace,  @reputation_servers)
   end # def register
 
   public
@@ -66,15 +66,15 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
 
     # TODO: Check  if we can simply this (one line)
     headers = message[HEADERS]
-    message.delete!(HEADERS)
+    message.delete(HEADERS)
     receivers= message[EMAIL_DESTINATIONS]
-    message.delete!(EMAIL_DESTINATIONS)
+    message.delete(EMAIL_DESTINATIONS)
     timestamp = message[TIMESTAMP]
-    message.delete!(TIMESTAMP)
+    message.delete(TIMESTAMP)
     
     to_druid = {}
 
-    if (ips.nil? and !ips.empty?) 
+    if (!ips.nil? and !ips.empty?) 
       ip_score = ips.first[SCORE]
       to_druid["ip_"+SCORE] = ip_score unless ip_score.nil?
     end
@@ -146,7 +146,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     action = message[ACTION]
     email_id = message[EMAIL_ID]
 
-    email_id_key = Key.new(@aerospike_namespace, "mailQuarantine", email_id)
+    email_id_key = Key.new(@aerospike_namespace, "mailQuarantine", email_id) rescue nil
     
     if (!action.nil? and action == "QUARANTINE")
       unless email_id.nil?
