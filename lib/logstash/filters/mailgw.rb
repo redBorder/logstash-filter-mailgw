@@ -9,12 +9,14 @@ require_relative "store/aerospike_store"
 class LogStash::Filters::Mailgw < LogStash::Filters::Base
   include MailgwConstant
   include Aerospike
+
   config_name "mailgw"
 
   config :aerospike_server,          :validate => :string,  :default => "",                             :required => false
-  config :aerospike_namespace,       :validate => :string,  :default => "malware",                             :required => false
+  config :aerospike_namespace,       :validate => :string,  :default => "malware",                      :required => false
   config :counter_store_counter,     :validate => :boolean, :default => false,                          :required => false
   config :flow_counter,              :validate => :boolean, :default => false,                          :required => false
+  config :reputation_servers,        :validate => :array,   :default => ["127.0.0.1:7777"],             :require => false
 
   # DATASOURCE="rb_flow"
   DELAYED_REALTIME_TIME = 15
@@ -58,16 +60,16 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
 
     generated_events = [] 
 
-    files = message.get(FILES)
-    urls = message.get(URLS)
-    ips = message.get("ip")
+    files = message[FILES]
+    urls = message[URLS]
+    ips = message["ip"]
 
     # TODO: Check  if we can simply this (one line)
-    headers = message.get(HEADERS)
+    headers = message[HEADERS]
     message.delete!(HEADERS)
-    receivers= message.get(EMAIL_DESTINATIONS)
+    receivers= message[EMAIL_DESTINATIONS]
     message.delete!(EMAIL_DESTINATIONS)
-    timestamp = message.get(TIMESTAMP)
+    timestamp = message[TIMESTAMP]
     message.delete!(TIMESTAMP)
     
     to_druid = {}
@@ -84,12 +86,12 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
           hash_druid.merge!to_druid
           hash_druid[EMAIL_DESTINATION] = receive
 
-          status = message.get(ACTION)
+          status = message[ACTION]
 
           hash_druid["status"] = status unless status.nil?
 
           files.each do |file|
-            #TODO : @aerospike_store.update_hash_times(timestamp, file[HASH])
+            @aerospike_store.update_hash_times(timestamp, file[HASH], "hash")
             hash_druid.merge!message
 
             hash_druid[FILE_NAME] = file["name"] unless file["name"].nil?
@@ -101,8 +103,8 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
             hash_druid["hash_"+PROBE_SCORE] = score unless score.nil?
 
             hash_druid[HASH] = file[HASH]
-            #TODO:  msg_ip_scores = @aerospike_store.enrich_ip_scores(hash_druid)
-            #TODO:  msg_hash_scores = @aerospikes.enrich_hash_scores(msg_ip_scores)
+            msg_ip_scores = @aerospike_store.enrich_ip_scores(hash_druid)
+            msg_hash_scores = @aerospikes.enrich_hash_scores(msg_ip_scores)
             msg_hash_scores[TYPE] = "mail-gw"
             msg_hash_scores[APPLICATION_ID_NAME] = "snmtp"
             
@@ -115,7 +117,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
           url_druid = {}
           url_druid[EMAIL_DESTINATION] = receive
           url_druid.merge!to_druid
-          status = message.get(ACTION).to_s
+          status = message[ACTION].to_s
 
           url_druid["status"] = status unless status.nil?
 
@@ -123,56 +125,76 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
             url = url_map[URL].to_s
 
             unless url.nil?
-              #TODO: @aerospike_store.update_hash_times(timestamp,  url)
+              @aerospike_store.update_hash_times(timestamp,  url)
               url_druid.merge!message
               url_druid[URL] = url
 
               score = url_map[SCORE].to_i
 
               url_druid["url_"+PROBE_SCORE] = score unless score.nil?
-              #TODO:  msg_ip_scores = @aerospike_store.enrich_ip_scores(hash_druid)
-              #TODO:  msg_url_scores = @aerospikes.enrich_url_scores(msg_ip_scores)
+              msg_ip_scores = @aerospike_store.enrich_ip_scores(hash_druid)
+              msg_url_scores = @aerospikes.enrich_url_scores(msg_ip_scores)
               msg_url_scores[TYPE] = "mail-gw"
               msg_url_scores[APPLICATION_ID_NAME] = "smtp"
               generated_events.push(LogStash::Event.new(msg_url_scores)) 
             end
-            
-
           end
-
         end
       end
     end
 
+    action = message[ACTION]
+    email_id = message[EMAIL_ID]
 
+    email_id_key = Key.new(@aerospike_namespace, "mailQuarantine", email_id)
+    
+    if (!action.nil? and action == "QUARANTINE")
+      unless email_id.nil?
+        sender = message[EMAIL_SENDER]
+        
+        files_count = files.count rescue 0 
+        urls_count = urls.count rescue 0
 
-    @store_manager.test(message)
-    # message_enrichment_store = @store_manager.enrich(message)
-    # message_enrichment_store[DURATION]  = calculate_duration(message_enrichment_store)
+        q_data = {}
+        q_data[TIMESTAMP] = timestamp
+        q_data[EMAIL_ID] = email_id
+        q_data["email_src"] = sender
+        q_data["email_dsts"] = receivers.joint(",")
+        q_data["files"] = files_count
+        q_data["urls"] = urls_count
 
-    # datasource = DATASOURCE
-    # if @flow_counter or @counter_store_counter
-    #   datasource = store_enrichment[NAMESPACE_UUID] ? DATASOURCE + "_" + store_enrichment[NAMESPACE_UUID] :       DATASOURCE
+        sensor_uuid = message["sensor_uuid"]
+        q_data["sensor_uuid"] = sensor_uuid unless sensor_uuid.nil?
 
-    #   if @flow_counter 
-    #     flows_number = @memcached.get(FLOWS_NUMBER) || {}
-    #     message_enrichment_store["flows_count"] = (flows_number[datasource] || 0)
-    #   end
-    # end
+        sensor_name = message[SENSOR_NAME]
+        q_data[SENSOR_NAME] = sensor_name unless sensor_name.nil?
 
-    # splitted_msg = split_flow(message_enrichment_store)
+        @aerospike.put(email_id_key, q_data)
 
-    # splitted_msg.each do |msg|
-    #   yield LogStash::Event.new(msg)
-    # end 
+      end
+    end
 
-    # if @counter_store_counter
-    #   counter_store = @memcached.get(COUNTER_STORE) || {}
-    #   counter = counter_store[datasource] || 0
-    #   counter_store[datasource] = counter + splitted_msg.size
-    #   @memcached.set(COUNTER_STORE,counter_store)
-    # end
+    if (!action.nil? and (action == "QUARANTINE_RELEASE" or action == "QUARANTINE_DROP"))
+      @aerospike.delete(email_id_key) if @aerospike.exists(email_id_key)
+    end
 
-    # event.cancel
+    subject = message[SUBJECT];
+    to_mail = {}
+    sensor_uuid = message["sensor_uuid"]
+
+    to_mail["sensor_uuid"] = sensor_uuid unless sensor_uuid.nil?
+
+    to_mail[HEADERS] = headers
+    to_mail[EMAIL_ID] = email_id
+    to_mail[TYPE] = "mail-gw"
+    to_mail[TIMESTAMP] = timestamp
+    generated_events.push(LogStash::Event.new(to_mail))
+
+    #TODO: check wtf happen with the NAMESPACE and so on.. 
+
+    generated_events.each do |e|
+      yield e
+    end
+    event.cancel
   end  # def filter(event)
 end # class LogStash::Filters::Mailgw
