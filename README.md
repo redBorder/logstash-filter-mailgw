@@ -2,7 +2,7 @@
 
 This is a plugin for [Logstash](https://github.com/elastic/logstash).
 
-This filter normalize the upcoming netflow information into a minute base system.
+This filter is use as a internal process for redBorder platform..
 
 ## Documentation
 
