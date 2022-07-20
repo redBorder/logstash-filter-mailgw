@@ -1,6 +1,6 @@
 # encoding: utf-8
 require "aerospike"
-require "http"
+require "manticore"
 require_relative "../util/mailgw_constant"
 
 class AerospikeStore
@@ -79,7 +79,7 @@ class AerospikeStore
         params["ip"] = src
 
         # TODO: check if this works 
-        HTTP.post(make_random_reputation_url, params)
+        Manticore.post(make_random_reputation_url, params: params)
       end
 
       if !data_dst.empty?
@@ -106,7 +106,7 @@ class AerospikeStore
         params["ip"] = dst
 
         # TODO: check if this works 
-        HTTP.post(make_random_reputation_url, params)
+        Manticore.post(make_random_reputation_url, params: params)
       end
       
       score_src = -1 unless score_src
@@ -169,7 +169,7 @@ class AerospikeStore
         params["ip"] = src
 
          # TODO: check if this works 
-         HTTP.post(make_random_reputation_url, params)
+         Manticore.post(make_random_reputation_url, params: params)
       end
 
       params = {}
@@ -178,7 +178,7 @@ class AerospikeStore
       params["ip"] = dst
 
       # TODO: check if this works 
-      HTTP.post(make_random_reputation_url, params)
+      Manticore.post(make_random_reputation_url, params: params)
 
     elsif !dst.nil?
       data_dst = @aerospike.get(dst_key) || {}
@@ -219,7 +219,7 @@ class AerospikeStore
         params["ip"] = dst
 
         # TODO: check if this works 
-        HTTP.post(make_random_reputation_url, params)
+        Manticore.post(make_random_reputation_url, params: params)
       end
     end
     
@@ -269,7 +269,7 @@ class AerospikeStore
         params["hash"] = hash
 
          # TODO: check if this works 
-         HTTP.post(make_random_reputation_url, params)
+         Manticore.post(make_random_reputation_url, params: params)
       end
     end
 
@@ -314,7 +314,7 @@ class AerospikeStore
         params["url"] = url
 
          # TODO: check if this works 
-         HTTP.post(make_random_reputation_url, params)
+         Manticore.post(make_random_reputation_url, params: params)
       end
     end
 

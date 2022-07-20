@@ -25,7 +25,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
   def register
     # Add instance variables
     @aerospike_server = AerospikeConfig::servers if @aerospike_server.empty?
-    @aerospike = Client.new(@aerospike_server)
+    @aerospike = Client.new(@aerospike_server.first.split(":").first)
     @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace,  @reputation_servers)
   end # def register
 
@@ -104,9 +104,11 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
 
             hash_druid[HASH] = file[HASH]
             msg_ip_scores = @aerospike_store.enrich_ip_scores(hash_druid)
-            msg_hash_scores = @aerospikes.enrich_hash_scores(msg_ip_scores)
+            msg_hash_scores = @aerospike_store.enrich_hash_scores(msg_ip_scores)
             msg_hash_scores[TYPE] = "mail-gw"
             msg_hash_scores[APPLICATION_ID_NAME] = "snmtp"
+
+            msg_hash_scores["output_topic"] = "rb_malware_post"
             
             generated_events.push(LogStash::Event.new(msg_hash_scores))     
           end
@@ -125,7 +127,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
             url = url_map[URL].to_s
 
             unless url.nil?
-              @aerospike_store.update_hash_times(timestamp,  url)
+              @aerospike_store.update_hash_times(timestamp,  url, "url")
               url_druid.merge!message
               url_druid[URL] = url
 
@@ -133,9 +135,11 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
 
               url_druid["url_"+PROBE_SCORE] = score unless score.nil?
               msg_ip_scores = @aerospike_store.enrich_ip_scores(hash_druid)
-              msg_url_scores = @aerospikes.enrich_url_scores(msg_ip_scores)
+              msg_url_scores = @aerospike_store.enrich_url_scores(msg_ip_scores)
               msg_url_scores[TYPE] = "mail-gw"
               msg_url_scores[APPLICATION_ID_NAME] = "smtp"
+
+              msg_url_scores["output_topic"] = "rb_malware_post"
               generated_events.push(LogStash::Event.new(msg_url_scores)) 
             end
           end
@@ -188,6 +192,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     to_mail[EMAIL_ID] = email_id
     to_mail[TYPE] = "mail-gw"
     to_mail[TIMESTAMP] = timestamp
+    to_mail["output_topic"] = "rb_mail_post"
     generated_events.push(LogStash::Event.new(to_mail))
 
     #TODO: check wtf happen with the NAMESPACE and so on.. 
