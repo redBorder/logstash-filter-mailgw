@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'logstash-filter-mailgw'
-  s.version = '1.0.1'
+  s.version = '1.0.3'
   s.licenses = ['GNU AFFERO GENERAL PUBLIC LICENSE']
   s.summary = "plugin to manager mailgw data pipeline"
   s.description = "This gem is a Logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/logstash-plugin install gemname. This gem is not a stand-alone program"
@@ -20,5 +20,6 @@ Gem::Specification.new do |s|
   # Gem dependencies
   s.add_runtime_dependency "logstash-core-plugin-api", "~> 2.0"
   s.add_runtime_dependency 'aerospike', "= 2.5.1"
+  s.add_runtime_dependency 'manticore'
   s.add_development_dependency 'logstash-devutils'
 end

@@ -15,12 +15,6 @@ class AerospikeStore
     @reputation_servers = reputation_servers
   end
 
-  def test(message)
-    key = Key.new(@namespace, 'test_set', 'test_key') rescue nil
-    value = '{ "pepito" : 666 }'
-    @aerospike.put(key, value)
-  end
-
   def update_hash_times(timestamp, data, type)
     unless data.nil?
       hash_times_key = Key.new(@namespace, type + "Times" , data) rescue nil
