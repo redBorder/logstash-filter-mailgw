@@ -13,6 +13,17 @@ class AerospikeStore
     @aerospike = aerospike
     @namespace = namespace 
     @reputation_servers = reputation_servers
+
+    # Create index
+    @aerospike.create_index(@namespace, "hashScores", "index_hash_score", "score", :numeric)
+    @aerospike.create_index(@namespace, "hashScores", "index_hash_list", "list_type", :string)
+    @aerospike.create_index(@namespace, "urlScores", "index_url_score", "score", :numeric)
+    @aerospike.create_index(@namespace, "urlScores", "index_url_list", "list_type", :string)
+    @aerospike.create_index(@namespace, "ipScores", "index_ip_score", "score", :numeric)
+    @aerospike.create_index(@namespace, "ipScores", "index_ip_list", "list_type", :string)
+    @aerospike.create_index(@namespace, "controlFiles", "index_hash_controlFiles", "hash", :string)
+
+    @aerospike.create_index(@namespace, "mailQuarantine", "index_mail_quarantine", "sensor_uuid", :string)
   end
 
   def update_hash_times(timestamp, data, type)

@@ -27,6 +27,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     @aerospike_server = AerospikeConfig::servers if @aerospike_server.empty?
     @aerospike = Client.new(@aerospike_server.first.split(":").first)
     @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace,  @reputation_servers)
+
   end # def register
 
   public
