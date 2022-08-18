@@ -71,7 +71,6 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     receivers= message[EMAIL_DESTINATIONS]
     message.delete(EMAIL_DESTINATIONS)
     timestamp = message[TIMESTAMP]
-    message.delete(TIMESTAMP)
     
     to_druid = {}
 
