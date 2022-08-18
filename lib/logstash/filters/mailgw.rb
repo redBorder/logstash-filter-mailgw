@@ -134,7 +134,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
               score = url_map[SCORE].to_i
 
               url_druid["url_"+PROBE_SCORE] = score unless score.nil?
-              msg_ip_scores = @aerospike_store.enrich_ip_scores(hash_druid)
+              msg_ip_scores = @aerospike_store.enrich_ip_scores(url_druid)
               msg_url_scores = @aerospike_store.enrich_url_scores(msg_ip_scores)
               msg_url_scores[TYPE] = "mail-gw"
               msg_url_scores[APPLICATION_ID_NAME] = "smtp"
