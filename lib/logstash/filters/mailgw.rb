@@ -62,8 +62,11 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     generated_events = [] 
 
     files = message[FILES]
+    message.delete(FILES)
     urls = message[URLS]
+    message.delete(URLS)
     ips = message["ip"]
+    message.delete("ip")
 
     # TODO: Check  if we can simply this (one line)
     headers = message[HEADERS]
