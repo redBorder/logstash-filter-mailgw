@@ -166,7 +166,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
         q_data[TIMESTAMP] = timestamp
         q_data[EMAIL_ID] = email_id
         q_data["email_src"] = sender
-        q_data["email_dsts"] = receivers.joint(",")
+        q_data["email_dsts"] = receivers.join(",")
         q_data["files"] = files_count
         q_data["urls"] = urls_count
 
