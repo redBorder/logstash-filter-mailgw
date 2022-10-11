@@ -285,7 +285,12 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     new_event = LogStash::Event.new(to_mail)
 
     generated_events.push(new_event)
-    upload_event_to_s3(new_event) if (!action.nil? and action == "QUARANTINE")
+    begin
+      upload_event_to_s3(new_event) if (!action.nil? and action == "QUARANTINE")
+    rescue => e
+      @logger.error(e.message)
+    end
+
 
     #TODO: check wtf happen with the NAMESPACE and so on.. 
 
