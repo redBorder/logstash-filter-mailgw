@@ -6,6 +6,9 @@ require_relative "util/malware_constant"
 require_relative "util/aerospike_config"
 require_relative "store/aerospike_store"
 
+require 'aws-sdk-v1'
+require 'json'
+
 class LogStash::Filters::Mailgw < LogStash::Filters::Base
   include MalwareConstant
   include Aerospike
@@ -17,6 +20,22 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
   config :counter_store_counter,     :validate => :boolean, :default => false,                          :required => false
   config :flow_counter,              :validate => :boolean, :default => false,                          :required => false
   config :reputation_servers,        :validate => :array,   :default => ["127.0.0.1:7777"],             :require => false
+  # S3 bucket
+  config :bucket,                    :validate => :string,  :default => "malware"
+  # Where results are going to be stored in s3.
+  config :s3_path,                   :validate => :string,  :default => "/mdata/mailData/rbMailPost/"
+  # S3 Endpoint
+  config :endpoint,                  :validate => :string,  :default => "s3.redborder.cluster"
+  # S3 Access key
+  config :access_key_id,             :validate => :string,                                              :required => true
+  # S3 Secret Access key
+  config :secret_access_key,         :validate => :string,                                              :required => true
+  # S3 force_path_style option
+  config :force_path_style,          :validate => :boolean, :default => true
+  # S3 ssl_verify_peer option
+  config :ssl_verify_peer,           :validate => :boolean, :default => false
+  # Certificate path
+  config :ssl_ca_bundle,             :validate => :string,  :default => "/var/opt/opscode/nginx/ca/s3.redborder.cluster.crt"
 
   # DATASOURCE="rb_flow"
   DELAYED_REALTIME_TIME = 15
@@ -27,6 +46,15 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     @aerospike_server = AerospikeConfig::servers if @aerospike_server.empty?
     @aerospike = Client.new(@aerospike_server.first.split(":").first)
     @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace,  @reputation_servers)
+
+    @s3 = AWS::S3::Client.new(
+      endpoint: @endpoint,
+      access_key_id: @access_key_id,
+      secret_access_key: @secret_access_key,
+      force_path_style:  @force_path_style,
+      ssl_verify_peer: @ssl_verify_peer,
+      ssl_ca_bundle: @ssl_ca_bundle
+    )
 
   end # def register
 
@@ -54,6 +82,64 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
 
     return range
   end
+
+  def upload_event_to_s3(event)
+    event  = JSON.parse(event.to_json)
+    email_id = event[EMAIL_ID]
+    timestamp = event[TIMESTAMP]
+
+
+    time = Time.at(timestamp)
+
+    year  = time.year.to_s
+    month = ('%02d' % time.month).to_s
+    day   = ('%02d' % time.day).to_s
+    hour  = ('%02d' % time.hour).to_s
+    #Batch each 5 minutes
+    batch = (time.min / 5).to_i.to_s
+
+    folder = year + "/" + month + "/" + day  + "/" + hour  + "/" + batch
+
+    s3_result_path = @s3_path + folder
+
+    temporary_file_path = '/tmp/' + email_id
+
+    mails = []
+    begin
+      s3_object = @s3.get_object(bucket_name: @bucket, key: s3_result_path).data[:data]
+      mails.push(eval(s3_object))
+    rescue AWS::S3::Errors::NoSuchKey
+      mails = []
+    rescue => e
+      @logger.error(e.message)
+    end
+
+    mails.push event
+
+    # Writing temporary file
+    File.open(temporary_file_path, 'w',) do |f|
+      File.chmod(0777,temporary_file_path)
+      FileUtils.chown 'logstash', 'logstash', temporary_file_path
+      f.puts mails
+    end
+
+    begin
+      # Uploading file to s3
+      @logger.info("Uploading event (rb_mail_post) to s3")
+      @logger.info("Event  stored in #{s3_result_path}")
+      open(temporary_file_path, 'r') do |f|
+        @s3.put_object(bucket_name: @bucket, key: s3_result_path, data: f)
+      end
+    rescue => e
+      @logger.error(e.message)
+    end
+
+    # Deleting temporary file
+    open(temporary_file_path, 'w') do |f|
+      File.delete(f)
+    end
+  end
+
 
   def filter(event)
     message = {}
@@ -196,7 +282,15 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     to_mail[TYPE] = "mail-gw"
     to_mail[TIMESTAMP] = timestamp
     to_mail["output_topic"] = "rb_mail_post"
-    generated_events.push(LogStash::Event.new(to_mail))
+    new_event = LogStash::Event.new(to_mail)
+
+    generated_events.push(new_event)
+    begin
+      upload_event_to_s3(new_event) if (!action.nil? and action == "QUARANTINE")
+    rescue => e
+      @logger.error(e.message)
+    end
+
 
     #TODO: check wtf happen with the NAMESPACE and so on.. 
 
