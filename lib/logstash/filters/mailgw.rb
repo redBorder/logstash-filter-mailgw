@@ -114,15 +114,23 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
       @logger.error(e.message)
     end
 
-    mails.map! { | mail | JSON.pretty_generate(JSON.parse(mail.to_json))}
-    mails.push(JSON.pretty_generate(JSON.parse(event.to_json)))
+    mails.push(event.to_json)
 
     # Writing temporary file
     File.open(temporary_file_path, 'w',) do |f|
       File.chmod(0777,temporary_file_path)
       FileUtils.chown 'logstash', 'logstash', temporary_file_path
-      f.puts mails
+      f.puts '['
+      mails.each_with_index do |mail, index|
+        if index == mails.size - 1
+          f.puts mail
+        else
+          f.puts( mail.to_json + ',')
+        end
+      end
+      f.puts ']'
     end
+
 
     begin
       # Uploading file to s3
