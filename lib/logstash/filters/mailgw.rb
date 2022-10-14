@@ -107,21 +107,30 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     mails = []
     begin
       s3_object = @s3.get_object(bucket_name: @bucket, key: s3_result_path).data[:data]
-      mails.push(eval(s3_object))
+      mails = eval(s3_object)
     rescue AWS::S3::Errors::NoSuchKey
       mails = []
     rescue => e
       @logger.error(e.message)
     end
 
-    mails.push event
+    mails.push(event.to_json)
 
     # Writing temporary file
     File.open(temporary_file_path, 'w',) do |f|
       File.chmod(0777,temporary_file_path)
       FileUtils.chown 'logstash', 'logstash', temporary_file_path
-      f.puts mails
+      f.puts '['
+      mails.each_with_index do |mail, index|
+        if index == mails.size - 1
+          f.puts mail
+        else
+          f.puts( mail.to_json + ',')
+        end
+      end
+      f.puts ']'
     end
+
 
     begin
       # Uploading file to s3
@@ -166,6 +175,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     if (!ips.nil? and !ips.empty?) 
       ip_score = ips.first[SCORE]
       to_druid["ip_"+SCORE] = ip_score unless ip_score.nil?
+      @aerospike_store.update_hash_times(timestamp, ips.first["ip"], "ip")
     end
 
     unless receivers.nil?
