@@ -107,7 +107,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     mails = []
     begin
       s3_object = @s3.get_object(bucket_name: @bucket, key: s3_result_path).data[:data]
-      mails.push(eval(s3_object))
+      mails = eval(s3_object)
     rescue AWS::S3::Errors::NoSuchKey
       mails = []
     rescue => e
