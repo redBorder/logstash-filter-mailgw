@@ -114,7 +114,8 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
       @logger.error(e.message)
     end
 
-    mails.push event
+    mails.map! { | mail | JSON.pretty_generate(JSON.parse(mail.to_json))}
+    mails.push(JSON.pretty_generate(JSON.parse(event.to_json)))
 
     # Writing temporary file
     File.open(temporary_file_path, 'w',) do |f|
@@ -166,6 +167,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     if (!ips.nil? and !ips.empty?) 
       ip_score = ips.first[SCORE]
       to_druid["ip_"+SCORE] = ip_score unless ip_score.nil?
+      @aerospike_store.update_hash_times(timestamp, ips.first["ip"], "ip")
     end
 
     unless receivers.nil?
