@@ -15,16 +15,18 @@ class AerospikeStore
     @namespace = namespace 
     @reputation_servers = reputation_servers
 
-    # Create index
-    @aerospike.create_index(@namespace, "hashScores", "index_hash_score", "score", :numeric)
-    @aerospike.create_index(@namespace, "hashScores", "index_hash_list", "list_type", :string)
-    @aerospike.create_index(@namespace, "urlScores", "index_url_score", "score", :numeric)
-    @aerospike.create_index(@namespace, "urlScores", "index_url_list", "list_type", :string)
-    @aerospike.create_index(@namespace, "ipScores", "index_ip_score", "score", :numeric)
-    @aerospike.create_index(@namespace, "ipScores", "index_ip_list", "list_type", :string)
-    @aerospike.create_index(@namespace, "controlFiles", "index_hash_controlFiles", "hash", :string)
-
-    @aerospike.create_index(@namespace, "mailQuarantine", "index_mail_quarantine", "sensor_uuid", :string)
+    begin
+      @aerospike.create_index(@namespace, "hashScores", "index_hash_score", "score", :numeric)
+      @aerospike.create_index(@namespace, "hashScores", "index_hash_list", "list_type", :string)
+      @aerospike.create_index(@namespace, "urlScores", "index_url_score", "score", :numeric)
+      @aerospike.create_index(@namespace, "urlScores", "index_url_list", "list_type", :string)
+      @aerospike.create_index(@namespace, "ipScores", "index_ip_score", "score", :numeric)
+      @aerospike.create_index(@namespace, "ipScores", "index_ip_list", "list_type", :string)
+      @aerospike.create_index(@namespace, "controlFiles", "index_hash_controlFiles", "hash", :string)
+      @aerospike.create_index(@namespace, "mailQuarantine", "index_mail_quarantine", "sensor_uuid", :string)
+    rescue
+      return nil
+    end
   end
 
   def update_hash_times(timestamp, data, type)
@@ -32,7 +34,7 @@ class AerospikeStore
       hash_times_key = Key.new(@namespace, type + "Times" , data) rescue nil
       data_times = {}
 
-      record = @aerospike.get(hash_times_key,[],Policy.new)
+      record = @aerospike.get(hash_times_key,[],Policy.new) rescue nil
 
       if record.nil?
         data_times["time_start"] = timestamp
@@ -40,8 +42,11 @@ class AerospikeStore
       else
         data_times["time_end"] = timestamp
       end
-
-      @aerospike.put(hash_times_key, data_times)
+      begin
+        @aerospike.put(hash_times_key, data_times)
+      rescue
+        puts "[aerospike_store] ERROR: Cannot put to aerospike"
+      end
     end
   end
 
