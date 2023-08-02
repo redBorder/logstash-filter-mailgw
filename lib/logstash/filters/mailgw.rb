@@ -43,10 +43,6 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
   public
   def register
     # Add instance variables
-    @aerospike_server = AerospikeConfig::servers if @aerospike_server.empty?
-    @aerospike = Client.new(@aerospike_server.first.split(":").first)
-    @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace,  @reputation_servers)
-
     @s3 = AWS::S3::Client.new(
       endpoint: @endpoint,
       access_key_id: @access_key_id,
@@ -56,9 +52,26 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
       ssl_ca_bundle: @ssl_ca_bundle
     )
 
+    @aerospike_server = AerospikeConfig::servers if @aerospike_server.empty?
+    @aerospike = nil
+    @aerospike_store = nil
+    register_aerospike_and_set_aerospike_store
+
   end # def register
 
   public
+
+  def register_aerospike_and_set_aerospike_store
+    begin
+      host,port = @aerospike_server.split(":")
+      @aerospike = Client.new(Host.new(host, port))
+      @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace,  @reputation_servers)
+    rescue Aerospike::Exceptions::Aerospike => ex
+      @aerospike = nil
+      @aerospike_store = nil
+      @logger.error(ex.message)
+    end
+  end
 
   def size_to_range(size)
     range  = nil
@@ -151,6 +164,12 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
 
 
   def filter(event)
+
+    # Solve the problem that happen when:
+    # at time of registering the plugin the
+    # aerospike was not there
+    register_aerospike_and_set_aerospike_store if @aerospike.nil?
+
     message = {}
     message = event.to_hash
 
@@ -272,13 +291,21 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
         sensor_name = message[SENSOR_NAME]
         q_data[SENSOR_NAME] = sensor_name unless sensor_name.nil?
 
-        @aerospike.put(email_id_key, q_data)
+        begin
+          @aerospike.put(email_id_key, q_data)
+        rescue
+          puts "[logstash-filter-mailgw] ERROR: Cannot put to aerospike"
+        end
 
       end
     end
 
-    if (!action.nil? and (action == "QUARANTINE_RELEASE" or action == "QUARANTINE_DROP"))
-      @aerospike.delete(email_id_key) if @aerospike.exists(email_id_key)
+    if (action && (action == "QUARANTINE_RELEASE" or action == "QUARANTINE_DROP")) && @aerospike.exists(email_id_key)
+      begin
+        @aerospike.delete(email_id_key) 
+      rescue
+        puts "[logstash-filter-mailgw] ERROR: Cannot delete from aerospike"
+      end
     end
 
     subject = message[SUBJECT];
