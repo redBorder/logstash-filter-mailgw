@@ -53,6 +53,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
     )
 
     @aerospike_server = AerospikeConfig::servers if @aerospike_server.empty?
+    @aerospike_server = @aerospike_server.sample if @aerospike_server.class.to_s == "Array"
     @aerospike = nil
     @aerospike_store = nil
     register_aerospike_and_set_aerospike_store
@@ -63,7 +64,7 @@ class LogStash::Filters::Mailgw < LogStash::Filters::Base
 
   def register_aerospike_and_set_aerospike_store
     begin
-      host,port = @aerospike_server.first.split(":")
+      host,port = @aerospike_server.split(":")
       @aerospike = Client.new(Host.new(host, port))
       @aerospike_store = AerospikeStore.new(@aerospike, @aerospike_namespace,  @reputation_servers)
     rescue Aerospike::Exceptions::Aerospike => ex
